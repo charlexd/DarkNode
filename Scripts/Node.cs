@@ -91,19 +91,23 @@ namespace XNode {
         /// </summary>
         /// <seealso cref="AddInstancePort"/>
         /// <seealso cref="AddInstanceInput"/>
-        public NodePort AddInstanceOutput(Type type, Node.ConnectionType connectionType = Node.ConnectionType.Multiple, string fieldName = null) {
-            return AddInstancePort(type, NodePort.IO.Output, connectionType, fieldName);
+        public NodePort AddInstanceOutput(Type type, Node.ConnectionType connectionType = Node.ConnectionType.Multiple, string fieldName = null, string namePrefix = null) {
+            return AddInstancePort(type, NodePort.IO.Output, connectionType, fieldName, namePrefix);
         }
 
         /// <summary> Add a dynamic, serialized port to this node.
         /// </summary>
         /// <seealso cref="AddInstanceInput"/>
         /// <seealso cref="AddInstanceOutput"/>
-        private NodePort AddInstancePort(Type type, NodePort.IO direction, Node.ConnectionType connectionType = Node.ConnectionType.Multiple, string fieldName = null) {
+        private NodePort AddInstancePort(Type type, NodePort.IO direction, Node.ConnectionType connectionType = Node.ConnectionType.Multiple, string fieldName = null, string namePrefix = null) {
             if (fieldName == null) {
-                fieldName = "instanceInput_0";
+	            if (namePrefix == null)
+	            {
+		            namePrefix = "instanceInput_";
+	            }
+	            fieldName = namePrefix + "0";
                 int i = 0;
-                while (HasPort(fieldName)) fieldName = "instanceInput_" + (++i);
+                while (HasPort(fieldName)) fieldName = namePrefix + (++i);
             } else if (HasPort(fieldName)) {
                 Debug.LogWarning("Port '" + fieldName + "' already exists in " + name, this);
                 return ports[fieldName];
