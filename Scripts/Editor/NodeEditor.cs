@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -43,6 +43,10 @@ namespace XNodeEditor {
 
         /// <summary> Draws standard field editors for all public fields </summary>
         public virtual void OnBodyGUI() {
+            // Unity specifically requires this to save/update any serial object.
+            // serializedObject.Update(); must go at the start of an inspector gui, and
+            // serializedObject.ApplyModifiedProperties(); goes at the end.
+            serializedObject.Update();
             string[] excludes = { "m_Script", "graph", "position", "ports" };
             portPositions = new Dictionary<XNode.NodePort, Vector2>();
 
@@ -54,17 +58,20 @@ namespace XNodeEditor {
                 if (excludes.Contains(iterator.name)) continue;
                 NodeEditorGUILayout.PropertyField(iterator, true);
             }
+            serializedObject.ApplyModifiedProperties();
         }
 
         public virtual int GetWidth() {
             Type type = target.GetType();
-            if (NodeEditorWindow.nodeWidth.ContainsKey(type)) return NodeEditorWindow.nodeWidth[type];
+            int width;
+            if (NodeEditorWindow.nodeWidth.TryGetValue(type, out width)) return width;
             else return 208;
         }
 
         public virtual Color GetTint() {
             Type type = target.GetType();
-            if (NodeEditorWindow.nodeTint.ContainsKey(type)) return NodeEditorWindow.nodeTint[type];
+            Color color;
+            if (NodeEditorWindow.nodeTint.TryGetValue(type, out color)) return color;
             else return Color.white;
         }
 
@@ -79,7 +86,7 @@ namespace XNodeEditor {
 
         [AttributeUsage(AttributeTargets.Class)]
         public class CustomNodeEditorAttribute : Attribute,
-            XNodeEditor.Internal.NodeEditorBase<NodeEditor, NodeEditor.CustomNodeEditorAttribute, XNode.Node>.INodeEditorAttrib {
+        XNodeEditor.Internal.NodeEditorBase<NodeEditor, NodeEditor.CustomNodeEditorAttribute, XNode.Node>.INodeEditorAttrib {
             private Type inspectedType;
             /// <summary> Tells a NodeEditor which Node type it is an editor for </summary>
             /// <param name="inspectedType">Type that this editor can edit</param>

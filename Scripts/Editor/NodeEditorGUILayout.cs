@@ -41,8 +41,19 @@ namespace XNodeEditor {
                     // Get data from [Input] attribute
                     XNode.Node.ShowBackingValue showBacking = XNode.Node.ShowBackingValue.Unconnected;
                     XNode.Node.InputAttribute inputAttribute;
-                    if (NodeEditorUtilities.GetAttrib(port.node.GetType(), property.name, out inputAttribute)) showBacking = inputAttribute.backingValue;
+                    bool instancePortList = false;
+                    if (NodeEditorUtilities.GetAttrib(port.node.GetType(), property.name, out inputAttribute)) {
+                        instancePortList = inputAttribute.instancePortList;
+                        showBacking = inputAttribute.backingValue;
+                    }
 
+                    if (instancePortList) {
+                        Type type = GetType(property);
+                        XNode.Node.ConnectionType connectionType = inputAttribute != null ? inputAttribute.connectionType : XNode.Node.ConnectionType.Multiple;
+                        EditorGUILayout.LabelField(label != null ? label : new GUIContent(property.displayName));
+                        InstancePortList(property.name, type, property.serializedObject, port.direction, connectionType);
+                        return;
+                    }
                     switch (showBacking) {
                         case XNode.Node.ShowBackingValue.Unconnected:
                             // Display a label if port is connected
@@ -67,8 +78,19 @@ namespace XNodeEditor {
                     // Get data from [Output] attribute
                     XNode.Node.ShowBackingValue showBacking = XNode.Node.ShowBackingValue.Unconnected;
                     XNode.Node.OutputAttribute outputAttribute;
-                    if (NodeEditorUtilities.GetAttrib(port.node.GetType(), property.name, out outputAttribute)) showBacking = outputAttribute.backingValue;
+                    bool instancePortList = false;
+                    if (NodeEditorUtilities.GetAttrib(port.node.GetType(), property.name, out outputAttribute)) {
+                        instancePortList = outputAttribute.instancePortList;
+                        showBacking = outputAttribute.backingValue;
+                    }
 
+                    if (instancePortList) {
+                        Type type = GetType(property);
+                        XNode.Node.ConnectionType connectionType = outputAttribute != null ? outputAttribute.connectionType : XNode.Node.ConnectionType.Multiple;
+                        EditorGUILayout.LabelField(label != null ? label : new GUIContent(property.displayName));
+                        InstancePortList(property.name, type, property.serializedObject, port.direction, connectionType);
+                        return;
+                    }
                     switch (showBacking) {
                         case XNode.Node.ShowBackingValue.Unconnected:
                             // Display a label if port is connected
@@ -93,7 +115,8 @@ namespace XNodeEditor {
                 rect.size = new Vector2(16, 16);
 
                 Color backgroundColor = new Color32(90, 97, 105, 255);
-                if (NodeEditorWindow.nodeTint.ContainsKey(port.node.GetType())) backgroundColor *= NodeEditorWindow.nodeTint[port.node.GetType()];
+                Color tint;
+                if (NodeEditorWindow.nodeTint.TryGetValue(port.node.GetType(), out tint)) backgroundColor *= tint;
                 Color col = NodeEditorWindow.current.graphEditor.GetTypeColor(port.ValueType);
                 DrawPortHandle(rect, backgroundColor, col);
 
@@ -102,6 +125,12 @@ namespace XNodeEditor {
                 if (NodeEditor.portPositions.ContainsKey(port)) NodeEditor.portPositions[port] = portPos;
                 else NodeEditor.portPositions.Add(port, portPos);
             }
+        }
+
+        private static System.Type GetType(SerializedProperty property) {
+            System.Type parentType = property.serializedObject.targetObject.GetType();
+            System.Reflection.FieldInfo fi = parentType.GetField(property.propertyPath);
+            return fi.FieldType;
         }
 
         /// <summary> Make a simple port field. </summary>
@@ -135,7 +164,8 @@ namespace XNodeEditor {
             rect.size = new Vector2(16, 16);
 
             Color backgroundColor = new Color32(90, 97, 105, 255);
-            if (NodeEditorWindow.nodeTint.ContainsKey(port.node.GetType())) backgroundColor *= NodeEditorWindow.nodeTint[port.node.GetType()];
+            Color tint;
+            if (NodeEditorWindow.nodeTint.TryGetValue(port.node.GetType(), out tint)) backgroundColor *= tint;
             Color col = NodeEditorWindow.current.graphEditor.GetTypeColor(port.ValueType);
             DrawPortHandle(rect, backgroundColor, col);
 
@@ -163,7 +193,8 @@ namespace XNodeEditor {
             rect.size = new Vector2(16, 16);
 
             Color backgroundColor = new Color32(90, 97, 105, 255);
-            if (NodeEditorWindow.nodeTint.ContainsKey(port.node.GetType())) backgroundColor *= NodeEditorWindow.nodeTint[port.node.GetType()];
+            Color tint;
+            if (NodeEditorWindow.nodeTint.TryGetValue(port.node.GetType(), out tint)) backgroundColor *= tint;
             Color col = NodeEditorWindow.current.graphEditor.GetTypeColor(port.ValueType);
             DrawPortHandle(rect, backgroundColor, col);
 
@@ -190,22 +221,34 @@ namespace XNodeEditor {
             GUI.color = col;
         }
 
+        [Obsolete("Use InstancePortList(string, Type, SerializedObject, NodePort.IO, Node.ConnectionType) instead")]
+        public static void InstancePortList(string fieldName, Type type, SerializedObject serializedObject, XNode.Node.ConnectionType connectionType = XNode.Node.ConnectionType.Multiple) {
+            InstancePortList(fieldName, type, serializedObject, XNode.NodePort.IO.Output, connectionType);
+        }
+
         /// <summary> Draw an editable list of instance ports. Port names are named as "[fieldName] [index]" </summary>
         /// <param name="fieldName">Supply a list for editable values</param>
         /// <param name="type">Value type of added instance ports</param>
         /// <param name="serializedObject">The serializedObject of the node</param>
         /// <param name="connectionType">Connection type of added instance ports</param>
-        public static void InstancePortList(string fieldName, Type type, SerializedObject serializedObject, XNode.Node.ConnectionType connectionType = XNode.Node.ConnectionType.Multiple) {
+        public static void InstancePortList(string fieldName, Type type, SerializedObject serializedObject, XNode.NodePort.IO io, XNode.Node.ConnectionType connectionType = XNode.Node.ConnectionType.Multiple) {
             XNode.Node node = serializedObject.targetObject as XNode.Node;
             SerializedProperty arrayData = serializedObject.FindProperty(fieldName);
             bool hasArrayData = arrayData != null && arrayData.isArray;
             int arraySize = hasArrayData ? arrayData.arraySize : 0;
 
-            List<XNode.NodePort> instancePorts = node.InstancePorts.Where(x => x.fieldName.StartsWith(fieldName)).OrderBy(x => x.fieldName).ToList();
+            Predicate<string> isMatchingInstancePort =
+                x => {
+                    string[] split = x.Split(' ');
+                    if (split != null && split.Length == 2) return split[0] == fieldName;
+                    else return false;
+                };
+            List<XNode.NodePort> instancePorts = node.InstancePorts.Where(x => isMatchingInstancePort(x.fieldName)).OrderBy(x => x.fieldName).ToList();
 
             for (int i = 0; i < instancePorts.Count(); i++) {
                 GUILayout.BeginHorizontal();
-                if (GUILayout.Button("-", GUILayout.Width(30))) {
+                // 'Remove' button
+                if (GUILayout.Button("-", EditorStyles.miniButton, GUILayout.ExpandWidth(false))) {
                     // Clear the removed ports connections
                     instancePorts[i].ClearConnections();
                     // Move following connections one step up to replace the missing connection
@@ -234,6 +277,7 @@ namespace XNodeEditor {
                         serializedObject.Update();
                     }
                     i--;
+                    GUILayout.EndHorizontal();
                 } else {
                     if (hasArrayData) {
                         if (i < arraySize) {
@@ -243,21 +287,25 @@ namespace XNodeEditor {
                         } else EditorGUILayout.LabelField("[Out of bounds]");
 
                     } else {
-                        EditorGUILayout.LabelField(instancePorts[i].fieldName);
+                        EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(instancePorts[i].fieldName));
                     }
-                    NodeEditorGUILayout.PortField(new GUIContent(), node.GetPort(instancePorts[i].fieldName), GUILayout.Width(-4));
+
+                    GUILayout.EndHorizontal();
+                    NodeEditorGUILayout.AddPortField(node.GetPort(instancePorts[i].fieldName));
                 }
-                GUILayout.EndHorizontal();
+                // GUILayout.EndHorizontal();
             }
             GUILayout.BeginHorizontal();
-            EditorGUILayout.Space();
-            if (GUILayout.Button("+", GUILayout.Width(30))) {
+            GUILayout.FlexibleSpace();
+            // 'Add' button
+            if (GUILayout.Button("+", EditorStyles.miniButton, GUILayout.ExpandWidth(false))) {
 
                 string newName = fieldName + " 0";
                 int i = 0;
                 while (node.HasPort(newName)) newName = fieldName + " " + (++i);
 
-                node.AddInstanceOutput(type, connectionType, newName);
+                if (io == XNode.NodePort.IO.Output) node.AddInstanceOutput(type, connectionType, newName);
+                else node.AddInstanceInput(type, connectionType, newName);
                 serializedObject.Update();
                 EditorUtility.SetDirty(node);
                 if (hasArrayData) arrayData.InsertArrayElementAtIndex(arraySize);
